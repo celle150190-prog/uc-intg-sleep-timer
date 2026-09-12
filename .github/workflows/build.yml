@@ -1,0 +1,72 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: write
+
+env:
+  INTG_NAME: sleep-timer
+  PYTHON_VER: 3.11.13-0.7.0
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt -r test-requirements.txt
+      - run: PYTHONPATH=intg-sleep-timer python -m unittest discover tests
+
+  build:
+    needs: test
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine version
+        run: echo "VERSION=$(git describe --match 'v[0-9]*' --tags HEAD --always)" >> "$GITHUB_ENV"
+      - name: Build ARM64 integration
+        run: |
+          docker run --rm --platform=linux/arm64/v8 \
+            --user="$(id -u):$(id -g)" \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            "docker.io/unfoldedcircle/r2-pyinstaller:${PYTHON_VER}" \
+            bash -c "cd /workspace && \
+              PYTHON_VERSION=\$(python --version | cut -d' ' -f2 | cut -d. -f1,2) && \
+              pip install --user -r requirements.txt && \
+              PYTHONPATH=~/.local/lib/python\${PYTHON_VERSION}/site-packages:\$PYTHONPATH \
+              pyinstaller --clean --onedir --name intg-sleep-timer intg-sleep-timer/driver.py" -y
+      - name: Package
+        run: |
+          mkdir -p artifacts/bin
+          mv dist/intg-sleep-timer/* artifacts/bin/
+          mv artifacts/bin/intg-sleep-timer artifacts/bin/driver
+          cp driver.json LICENSE artifacts/
+          tar czf "uc-intg-${INTG_NAME}-${VERSION}-aarch64.tar.gz" -C artifacts .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uc-intg-${{ env.INTG_NAME }}-${{ env.VERSION }}-aarch64
+          path: uc-intg-${{ env.INTG_NAME }}-${{ env.VERSION }}-aarch64.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Development Build
+          prerelease: true
+          generate_release_notes: true
+          files: "*.tar.gz"

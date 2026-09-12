@@ -1,0 +1,44 @@
+{
+  "driver_id": "sleep-timer",
+  "version": "0.1.0",
+  "min_core_api": "0.43.0",
+  "name": {
+    "en": "Sleep Timer",
+    "de": "Sleep Timer"
+  },
+  "icon": "uc:bed",
+  "description": {
+    "en": "Runs a Remote macro after a delay or after the current media item.",
+    "de": "Führt ein Remote-Makro nach Zeit oder nach dem aktuellen Medienelement aus."
+  },
+  "port": 8098,
+  "developer": {
+    "name": "celle150190-prog",
+    "url": "https://github.com/celle150190-prog/uc-intg-sleep-timer"
+  },
+  "home_page": "https://github.com/celle150190-prog/uc-intg-sleep-timer",
+  "setup_data_schema": {
+    "title": {
+      "en": "Sleep Timer setup",
+      "de": "Sleep-Timer-Einrichtung"
+    },
+    "settings": [
+      {
+        "id": "info",
+        "label": {
+          "en": "Requirements",
+          "de": "Voraussetzungen"
+        },
+        "field": {
+          "label": {
+            "value": {
+              "en": "Create a Remote Core API key and an off macro before continuing.",
+              "de": "Lege vor dem Fortfahren einen Remote-Core-API-Schlüssel und ein Ausschalt-Makro an."
+            }
+          }
+        }
+      }
+    ]
+  },
+  "release_date": "2026-09-12"
+}
