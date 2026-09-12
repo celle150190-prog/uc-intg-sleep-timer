@@ -15,7 +15,7 @@ _CONFIG_FILE = "config.json"
 class Settings:
     """Integration settings."""
 
-    core_url: str = "http://127.0.0.1"
+    core_url: str = "http://127.0.0.1:8080"
     core_api_key: str = ""
     target_entity_id: str = ""
     target_command_id: str = "macro.start"

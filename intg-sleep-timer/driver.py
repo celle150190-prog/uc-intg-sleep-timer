@@ -238,7 +238,11 @@ async def on_connect() -> None:
 
 
 @api.listens_to(ucapi.Events.SUBSCRIBE_ENTITIES)
-async def on_subscribe(_entity_ids: list[str]) -> None:
+async def on_subscribe(entity_ids: list[str]) -> None:
+    # The SDK dispatches this event as the named argument ``entity_ids``.
+    # Keep the exact parameter name or the listener wrapper drops the value and
+    # calls this handler without arguments, which closes the Core WebSocket.
+    del entity_ids
     if _controller:
         on_timer_view(_controller.view)
 
@@ -261,6 +265,9 @@ def _configure_logging() -> None:
         level=level,
         format="%(asctime)s %(levelname)-5s %(name)s: %(message)s",
     )
+    # ucapi 0.7.0 forces this logger to DEBUG and logs complete setup payloads.
+    # Keep it at INFO so credentials never appear in exported integration logs.
+    logging.getLogger("ucapi.api").setLevel(logging.INFO)
 
 
 if __name__ == "__main__":

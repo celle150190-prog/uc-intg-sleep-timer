@@ -41,6 +41,9 @@ your firmware, enter the Remote's normal web-configurator URL, for example `http
 5. Optionally enter the Emby Server URL, API key, and a device-name filter such as `Shield` or `LG`.
 6. Add the **Sleep Timer** entity. The two sensor entities are optional.
 
+Every published version has its own GitHub release and standalone installation archive. Existing version packages are
+never replaced.
+
 Available simple commands:
 
 `TIMER_15`, `TIMER_30`, `TIMER_45`, `TIMER_60`, `TIMER_90`, `TIMER_120`, `AFTER_CURRENT`, `ADD_15`,

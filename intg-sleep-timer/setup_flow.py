@@ -89,12 +89,13 @@ def _credentials_screen(error: str = "") -> ucapi.RequestUserInput:
                 },
             },
             {
-                "id": "core_api_key",
+                # The SDK redacts setup values whose id is ``password``.
+                "id": "password",
                 "label": {
-                    "en": "Core API key (leave blank to keep existing)",
-                    "de": "Core-API-Schlüssel (leer = vorhandenen behalten)",
+                    "en": "Core API key (required on first setup)",
+                    "de": "Core-API-Schlüssel (beim ersten Setup erforderlich)",
                 },
-                "field": {"text": {"value": ""}},
+                "field": {"password": {"value": ""}},
             },
         ]
     )
@@ -108,7 +109,17 @@ async def _load_entities(values: dict[str, str]) -> ucapi.SetupAction:
     global _pending_url, _pending_key
     current = _store.settings if _store else Settings()
     _pending_url = values.get("core_url", "").strip()
-    _pending_key = values.get("core_api_key", "").strip() or current.core_api_key
+    _pending_key = (
+        values.get("password", "").strip()
+        or values.get("core_api_key", "").strip()
+        or current.core_api_key
+    )
+    if not _pending_url:
+        return _credentials_screen("Die Remote-Core-URL ist erforderlich.")
+    if not _pending_key:
+        return _credentials_screen(
+            "Beim ersten Setup ist ein Core-API-Schlüssel erforderlich."
+        )
     client = CoreClient(_pending_url, _pending_key)
     try:
         entities = await client.list_entities("media_player,macro")
@@ -172,12 +183,13 @@ async def _load_entities(values: dict[str, str]) -> ucapi.SetupAction:
                 "field": {"text": {"value": current.emby_url}},
             },
             {
-                "id": "emby_api_key",
+                # ``token`` is redacted by the SDK in diagnostic logs.
+                "id": "token",
                 "label": {
                     "en": "Emby API key (leave blank to keep existing)",
                     "de": "Emby-API-Schlüssel (leer = vorhandenen behalten)",
                 },
-                "field": {"text": {"value": ""}},
+                "field": {"password": {"value": ""}},
             },
             {
                 "id": "emby_device_filter",
@@ -204,7 +216,11 @@ async def _finish(values: dict[str, str]) -> ucapi.SetupAction:
         target_entity_id=target,
         target_command_id="macro.start",
         emby_url=values.get("emby_url", "").strip(),
-        emby_api_key=values.get("emby_api_key", "").strip() or current.emby_api_key,
+        emby_api_key=(
+            values.get("token", "").strip()
+            or values.get("emby_api_key", "").strip()
+            or current.emby_api_key
+        ),
         emby_device_filter=values.get("emby_device_filter", "").strip(),
         emby_entity_id=values.get("emby_entity_id", "").strip(),
         shield_entity_id=values.get("shield_entity_id", "").strip(),
