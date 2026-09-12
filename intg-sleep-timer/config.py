@@ -27,6 +27,7 @@ class Settings:
     poll_interval: float = 5.0
     end_tolerance: float = 5.0
     stopped_grace: float = 15.0
+    ui_schema_version: int = 0
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict, replace
 import logging
 import math
 import os
@@ -14,6 +15,7 @@ from ucapi import remote, sensor
 from ucapi.ui import Size, UiPage, create_ui_text
 
 from config import ConfigStore, Settings
+from core_client import CoreApiError, CoreClient
 from models import TimerMode, TimerView
 import setup_flow
 from timer import TimerController
@@ -39,9 +41,11 @@ COMMANDS = [
     "CANCEL",
     "RUN_NOW",
 ]
+EMBEDDED_UI_VERSION = 1
 
 _store: ConfigStore | None = None
 _controller: TimerController | None = None
+_ui_sync_task: asyncio.Task[None] | None = None
 
 
 def _ui_pages() -> list[UiPage]:
@@ -70,6 +74,22 @@ def _ui_pages() -> list[UiPage]:
     page.add(create_ui_text("Abbrechen", 0, 5, Size(2, 1), "CANCEL"))
     page.add(create_ui_text("Jetzt aus", 2, 5, Size(2, 1), "RUN_NOW"))
     return [page]
+
+
+def _without_none(value: Any) -> Any:
+    """Remove optional null fields before sending a UI definition to Core REST."""
+    if isinstance(value, dict):
+        return {
+            key: _without_none(item) for key, item in value.items() if item is not None
+        }
+    if isinstance(value, list):
+        return [_without_none(item) for item in value]
+    return value
+
+
+def _ui_page_payload() -> dict[str, Any]:
+    """Return the embedded page as a Core-API compatible JSON object."""
+    return _without_none(asdict(_ui_pages()[0]))
 
 
 async def command_handler(
@@ -242,9 +262,40 @@ async def on_subscribe(entity_ids: list[str]) -> None:
     # The SDK dispatches this event as the named argument ``entity_ids``.
     # Keep the exact parameter name or the listener wrapper drops the value and
     # calls this handler without arguments, which closes the Core WebSocket.
-    del entity_ids
     if _controller:
         on_timer_view(_controller.view)
+    if REMOTE_ID in entity_ids:
+        _schedule_embedded_ui_sync()
+
+
+def _schedule_embedded_ui_sync() -> None:
+    """Schedule the one-time UI migration without delaying entity subscription."""
+    global _ui_sync_task
+    if _ui_sync_task and not _ui_sync_task.done():
+        return
+    _ui_sync_task = asyncio.create_task(_sync_embedded_ui())
+
+
+async def _sync_embedded_ui() -> None:
+    """Install the integration-provided page in an already configured entity."""
+    if _store is None or _store.settings.ui_schema_version >= EMBEDDED_UI_VERSION:
+        return
+    settings = _store.settings
+    client = CoreClient(settings.core_url, settings.core_api_key)
+    try:
+        entity_id = await client.find_configured_entity(REMOTE_ID, "remote")
+        await client.upsert_remote_ui_page(entity_id, _ui_page_payload())
+    except CoreApiError as error:
+        _LOG.warning("Embedded Sleep Timer UI could not be synchronized: %s", error)
+        return
+
+    updated = replace(settings, ui_schema_version=EMBEDDED_UI_VERSION)
+    if _store.save(updated):
+        _LOG.info("Embedded Sleep Timer UI version %s installed", EMBEDDED_UI_VERSION)
+    else:
+        _LOG.error(
+            "Embedded Sleep Timer UI was installed but migration state was not saved"
+        )
 
 
 async def main() -> None:

@@ -53,6 +53,62 @@ class CoreClient:
             raise CoreApiError("Unexpected entity response")
         return data
 
+    async def find_configured_entity(
+        self, local_entity_id: str, entity_type: str
+    ) -> str:
+        """Resolve an integration-local entity identifier to its Core identifier."""
+        entities = await self.list_entities(entity_type)
+        suffix = f".{local_entity_id}"
+        matches = [
+            str(item.get("entity_id", ""))
+            for item in entities
+            if item.get("entity_type") == entity_type
+            and (
+                item.get("entity_id") == local_entity_id
+                or str(item.get("entity_id", "")).endswith(suffix)
+            )
+        ]
+        if len(matches) != 1:
+            raise CoreApiError(
+                f"Configured {entity_type} entity not found: {local_entity_id}"
+            )
+        return matches[0]
+
+    async def upsert_remote_ui_page(self, entity_id: str, page: dict[str, Any]) -> str:
+        """Create or replace one embedded UI page of a remote entity."""
+        safe_id = quote(entity_id, safe="")
+        path = f"/api/remotes/{safe_id}/ui/pages"
+        response = await self._request("GET", path)
+        pages = response.json()
+        if not isinstance(pages, list):
+            raise CoreApiError("Unexpected remote UI response")
+
+        desired_page_id = str(page.get("page_id", ""))
+        desired_name = str(page.get("name", ""))
+        payload = {key: value for key, value in page.items() if key != "page_id"}
+        current = next(
+            (
+                item
+                for item in pages
+                if item.get("page_id") == desired_page_id
+                or (desired_name and item.get("name") == desired_name)
+            ),
+            None,
+        )
+        if current:
+            current_page_id = str(current.get("page_id", ""))
+            if not current_page_id:
+                raise CoreApiError("Remote UI page has no identifier")
+            safe_page_id = quote(current_page_id, safe="")
+            await self._request("PATCH", f"{path}/{safe_page_id}", json=payload)
+            return current_page_id
+
+        response = await self._request("POST", path, json=payload)
+        result = response.json()
+        if not isinstance(result, dict) or not result.get("page_id"):
+            raise CoreApiError("Unexpected create remote UI page response")
+        return str(result["page_id"])
+
     async def execute(self, entity_id: str, command_id: str) -> None:
         """Execute a command and retry the short macro command for old firmware."""
         safe_id = quote(entity_id, safe="")

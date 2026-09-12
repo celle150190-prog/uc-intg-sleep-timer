@@ -9,6 +9,10 @@ Custom integration that runs a configured Remote macro:
 The integration exposes a **Sleep Timer remote entity** with its own touch UI and simple commands, plus status and
 remaining-time sensors. Its commands can also be placed on buttons in existing activities and macros.
 
+The complete timer button layout is embedded in the remote entity. Version 0.1.2 also synchronizes this page once for
+entities that were already configured with an older version, because Remote Core normally imports a driver's default UI
+only during the initial entity configuration.
+
 ## Supported current-item sources
 
 | Source | Detection | Reliability |
