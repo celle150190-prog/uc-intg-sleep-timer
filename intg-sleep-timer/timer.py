@@ -188,15 +188,13 @@ class TimerController:
             self._publish()
             return False
 
-        ended_activities, activity_failures = (
-            await self._turn_off_active_activities()
-        )
+        ended_activities, activity_failures = await self._turn_off_active_activities()
         failures = 0
         for action in actions:
-            if (
-                action.entity_id in ended_activities
-                and action.command_id in {"activity.off", "off"}
-            ):
+            if action.entity_id in ended_activities and action.command_id in {
+                "activity.off",
+                "off",
+            }:
                 continue
             try:
                 await self._client.execute(action.entity_id, action.command_id)
