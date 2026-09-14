@@ -317,8 +317,7 @@ async def _finish(values: dict[str, str]) -> ucapi.SetupAction:
         target_command_id=first.command_id,
         target_actions=actions,
         turn_off_active_activity=(
-            values.get("turn_off_active_activity", "true").strip().casefold()
-            != "false"
+            values.get("turn_off_active_activity", "true").strip().casefold() != "false"
         ),
         emby_url=values.get("emby_url", "").strip(),
         emby_api_key=(

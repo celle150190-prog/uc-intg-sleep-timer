@@ -1,6 +1,6 @@
 {
   "driver_id": "sleep-timer",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "min_core_api": "0.43.0",
   "name": {
     "en": "Sleep Timer",

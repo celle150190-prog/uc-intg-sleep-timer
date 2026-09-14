@@ -188,7 +188,9 @@ class TimerController:
             self._publish()
             return False
 
-        ended_activities, activity_failures = await self._turn_off_active_activities()
+        ended_activities, activity_failures = (
+            await self._turn_off_active_activities()
+        )
         failures = 0
         for action in actions:
             if (
