@@ -306,10 +306,7 @@ async def main() -> None:
     setup_flow.initialize(_store, apply_settings)
     await api.init("driver.json", setup_flow.driver_setup_handler)
     api._driver_info["setup_data_schema"] = setup_flow.setup_data_schema()  # noqa: SLF001
-    if (
-        _store.settings.core_api_key
-        and _store.settings.resolved_target_actions()
-    ):
+    if _store.settings.core_api_key and _store.settings.resolved_target_actions():
         await apply_settings(_store.settings)
 
 
