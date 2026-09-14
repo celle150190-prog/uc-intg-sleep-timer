@@ -70,23 +70,26 @@ class CoreClientTest(unittest.IsolatedAsyncioTestCase):
     async def test_lists_only_active_power_capable_activities(self) -> None:
         client = CoreClient("http://remote", "key")
         client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
-            return_value=response(
-                200,
-                [
-                    {
-                        "entity_id": "uc.main.activity.game-avr",
-                        "entity_type": "activity",
-                        "features": ["on_off"],
-                        "attributes": {"state": "ON"},
-                    },
-                    {
-                        "entity_id": "uc.main.activity.music",
-                        "entity_type": "activity",
-                        "features": ["on_off"],
-                        "attributes": {"state": "OFF"},
-                    },
-                ],
-            )
+            side_effect=[
+                response(200, []),
+                response(
+                    200,
+                    [
+                        {
+                            "entity_id": "uc.main.activity.game-avr",
+                            "entity_type": "activity",
+                            "features": ["on_off"],
+                            "attributes": {"state": "ON"},
+                        },
+                        {
+                            "entity_id": "uc.main.activity.music",
+                            "entity_type": "activity",
+                            "features": ["on_off"],
+                            "attributes": {"state": "OFF"},
+                        },
+                    ],
+                ),
+            ]
         )
 
         activities = await client.list_active_activities()
@@ -96,10 +99,57 @@ class CoreClientTest(unittest.IsolatedAsyncioTestCase):
             [item["entity_id"] for item in activities],
         )
 
+    async def test_uses_activity_group_live_state_for_internal_activity(self) -> None:
+        client = CoreClient("http://remote", "key")
+        client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
+            side_effect=[
+                response(
+                    200,
+                    [
+                        {
+                            "group_id": "default",
+                            "name": {"en": "Default"},
+                            "activity_count": 2,
+                            "state": "ACTIVE",
+                        }
+                    ],
+                ),
+                response(
+                    200,
+                    {
+                        "group_id": "default",
+                        "activities": [
+                            {
+                                "entity_id": "uc.main.activity.game-avr",
+                                "state": "ON",
+                            },
+                            {
+                                "entity_id": "uc.main.activity.music",
+                                "state": "OFF",
+                            },
+                        ],
+                    },
+                ),
+                response(200, []),
+            ]
+        )
+
+        activities = await client.list_active_activities()
+
+        self.assertEqual(
+            ["uc.main.activity.game-avr"],
+            [item["entity_id"] for item in activities],
+        )
+        self.assertEqual(
+            "/api/activity_groups/default",
+            client._request.await_args_list[1].args[1],  # noqa: SLF001
+        )
+
     async def test_loads_activity_details_if_overview_has_no_state(self) -> None:
         client = CoreClient("http://remote", "key")
         client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
             side_effect=[
+                response(200, []),
                 response(
                     200,
                     [
@@ -129,6 +179,56 @@ class CoreClientTest(unittest.IsolatedAsyncioTestCase):
             "GET",
             "/api/activities/uc.main.activity.game-avr",
         )
+
+    async def test_turn_off_activity_waits_for_confirmed_off_state(self) -> None:
+        client = CoreClient("http://remote", "key")
+        client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
+            side_effect=[
+                response(200, {}),
+                response(
+                    200,
+                    {
+                        "entity_id": "uc.main.activity.game-avr",
+                        "attributes": {"state": "RUNNING"},
+                    },
+                ),
+                response(
+                    200,
+                    {
+                        "entity_id": "uc.main.activity.game-avr",
+                        "attributes": {"state": "OFF"},
+                    },
+                ),
+            ]
+        )
+
+        ended = await client.turn_off_activity(
+            "uc.main.activity.game-avr", attempts=2, interval=0
+        )
+
+        self.assertTrue(ended)
+        self.assertEqual(3, client._request.await_count)  # noqa: SLF001
+
+    async def test_turn_off_activity_rejects_unconfirmed_state(self) -> None:
+        client = CoreClient("http://remote", "key")
+        client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
+            side_effect=[
+                response(200, {}),
+                response(
+                    200,
+                    {
+                        "entity_id": "uc.main.activity.game-avr",
+                        "attributes": {"state": "ON"},
+                    },
+                ),
+            ]
+        )
+
+        ended = await client.turn_off_activity(
+            "uc.main.activity.game-avr", attempts=1, interval=0
+        )
+
+        self.assertFalse(ended)
 
     async def test_retries_short_command_on_older_core(self) -> None:
         client = CoreClient("http://remote", "key")

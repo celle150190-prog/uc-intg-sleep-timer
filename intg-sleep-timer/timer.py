@@ -241,8 +241,10 @@ class TimerController:
             if not entity_id:
                 continue
             try:
-                await self._client.execute(entity_id, "activity.off")
-                ended.add(entity_id)
+                if await self._client.turn_off_activity(entity_id):
+                    ended.add(entity_id)
+                else:
+                    failures += 1
             except Exception:
                 failures += 1
                 _LOG.exception("Cannot turn off active activity %s", entity_id)

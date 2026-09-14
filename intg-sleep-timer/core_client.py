@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 from urllib.parse import quote
 
 import httpx
+
+_LOG = logging.getLogger(__name__)
+
+_ACTIVE_ACTIVITY_STATES = {"ON", "RUNNING", "ERROR", "STOPPED", "TIMEOUT"}
+_ACTIVE_GROUP_STATES = {"ACTIVE", "RUNNING", "ERROR"}
 
 
 class CoreApiError(RuntimeError):
@@ -62,25 +69,118 @@ class CoreClient:
             raise CoreApiError("Unexpected activity response")
         return data
 
+    async def list_activities(self) -> list[dict[str, Any]]:
+        """Return Remote Core activities from their canonical endpoint."""
+        response = await self._request(
+            "GET", "/api/activities", params={"page": 1, "limit": 100}
+        )
+        data = response.json()
+        if not isinstance(data, list):
+            raise CoreApiError("Unexpected activity list response")
+        return data
+
+    async def list_activity_groups(self) -> list[dict[str, Any]]:
+        """Return activity-group overviews including their current state."""
+        response = await self._request(
+            "GET", "/api/activity_groups", params={"page": 1, "limit": 100}
+        )
+        data = response.json()
+        if not isinstance(data, list):
+            raise CoreApiError("Unexpected activity group list response")
+        return data
+
+    async def get_activity_group(self, group_id: str) -> dict[str, Any]:
+        """Load a group including the live state of every activity."""
+        safe_id = quote(group_id, safe="")
+        response = await self._request("GET", f"/api/activity_groups/{safe_id}")
+        data = response.json()
+        if not isinstance(data, dict):
+            raise CoreApiError("Unexpected activity group response")
+        return data
+
     async def list_active_activities(self) -> list[dict[str, Any]]:
-        """Return activities which are currently on and can be switched off."""
-        overviews = await self.list_entities("activity")
-        active: list[dict[str, Any]] = []
-        for overview in overviews:
-            entity_id = str(overview.get("entity_id", "")).strip()
-            if not entity_id:
-                continue
-            activity = overview
-            if not self._sequence_state(activity):
-                activity = await self.get_activity(entity_id)
-            features = {
-                str(feature).casefold()
-                for feature in activity.get("features", [])
-                if feature
-            }
-            if self._sequence_state(activity) == "ON" and "on_off" in features:
-                active.append(activity)
-        return active
+        """Return every activity Core still considers active.
+
+        Internal ``uc.main`` activities are not reliably included in the generic
+        entity search on every Core version. Activity groups expose the live state
+        used by the Remote UI, while the dedicated activities endpoint is retained
+        as a fallback for ungrouped activities and older Core versions.
+        """
+        active: dict[str, dict[str, Any]] = {}
+        successful_sources = 0
+
+        try:
+            groups = await self.list_activity_groups()
+            successful_sources += 1
+            for overview in groups:
+                group_id = str(overview.get("group_id", "")).strip()
+                group_state = str(overview.get("state", "")).strip().upper()
+                if not group_id or (
+                    group_state and group_state not in _ACTIVE_GROUP_STATES
+                ):
+                    continue
+                group = await self.get_activity_group(group_id)
+                activities = group.get("activities", [])
+                if not isinstance(activities, list):
+                    continue
+                for activity in activities:
+                    if not isinstance(activity, dict):
+                        continue
+                    entity_id = str(activity.get("entity_id", "")).strip()
+                    if entity_id and self._is_active_activity(activity):
+                        active[entity_id] = activity
+        except CoreApiError:
+            _LOG.warning(
+                "Activity-group lookup failed; falling back to activity list",
+                exc_info=True,
+            )
+
+        try:
+            overviews = await self.list_activities()
+            successful_sources += 1
+            for overview in overviews:
+                entity_id = str(overview.get("entity_id", "")).strip()
+                if not entity_id:
+                    continue
+                activity = overview
+                if not self._sequence_state(activity):
+                    activity = await self.get_activity(entity_id)
+                if self._is_active_activity(activity):
+                    active[entity_id] = activity
+        except CoreApiError:
+            if not successful_sources:
+                raise
+            _LOG.warning("Dedicated activity lookup failed", exc_info=True)
+
+        _LOG.info(
+            "Remote Core reports %d active activity/activities: %s",
+            len(active),
+            ", ".join(active) or "none",
+        )
+        return list(active.values())
+
+    async def turn_off_activity(
+        self, entity_id: str, attempts: int = 16, interval: float = 1.0
+    ) -> bool:
+        """Turn off an activity and verify that Core reached the OFF state."""
+        await self.execute(entity_id, "activity.off")
+        for attempt in range(max(1, attempts)):
+            activity = await self.get_activity(entity_id)
+            state = self._sequence_state(activity)
+            if state == "OFF":
+                return True
+            if attempt + 1 < attempts:
+                await asyncio.sleep(max(0.0, interval))
+        _LOG.error(
+            "Activity %s did not reach OFF after the Core command; last state: %s",
+            entity_id,
+            state or "unknown",
+        )
+        return False
+
+    @classmethod
+    def _is_active_activity(cls, entity: dict[str, Any]) -> bool:
+        return cls._sequence_state(entity) in _ACTIVE_ACTIVITY_STATES
 
     @staticmethod
     def _sequence_state(entity: dict[str, Any]) -> str:

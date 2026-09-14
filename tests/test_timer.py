@@ -16,6 +16,10 @@ class FakeClient:
     async def list_active_activities(self):
         return self.active_activities
 
+    async def turn_off_activity(self, entity_id):
+        self.calls.append((entity_id, "activity.off"))
+        return entity_id not in self.failing_entities
+
     async def execute(self, entity_id, command_id):
         self.calls.append((entity_id, command_id))
         if entity_id in self.failing_entities:

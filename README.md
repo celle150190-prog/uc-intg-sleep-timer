@@ -17,9 +17,10 @@ Version 0.1.3 adds up to six independent off targets. Supported targets are powe
 activities, lights and switches, plus existing Remote macros. All selected actions are attempted in their configured
 order; one failing target does not prevent the remaining targets from being processed.
 
-Version 0.1.5 detects every activity whose Core state is `ON` and sends `activity.off` before the configured device
-targets run. This executes the activity's normal off sequence and changes its Core state to `OFF`, so Remote 3 no longer
-wakes up inside the previous activity. The behavior is enabled by default and can be disabled in setup.
+Version 0.1.8 detects the active activity through Remote Core's dedicated activity and activity-group endpoints and sends
+`activity.off` before the configured device targets run. It then verifies that Core actually reached `OFF`, so a command
+accepted by the API is no longer reported as successful while the Remote still shows the old activity. The behavior is
+enabled by default and can be disabled in setup.
 
 ## Supported current-item sources
 
