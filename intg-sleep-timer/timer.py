@@ -181,32 +181,43 @@ class TimerController:
         self._publish()
 
     async def _fire_locked(self) -> bool:
-        try:
-            await self._client.execute(
-                self._settings.target_entity_id,
-                self._settings.target_command_id,
-            )
-        except Exception:
-            _LOG.exception("Cannot execute sleep action")
-            self._last_status = "Ausschaltaktion fehlgeschlagen"
-            self._mode = TimerMode.OFF
-            self._deadline = None
-            self._armed_item = None
+        actions = self._settings.resolved_target_actions()
+        if not actions:
+            self._last_status = "Keine Ausschaltaktion konfiguriert"
+            self._reset_after_fire()
             self._publish()
             return False
-        self._last_status = "Ausschaltaktion ausgeführt"
+
+        failures = 0
+        for action in actions:
+            try:
+                await self._client.execute(action.entity_id, action.command_id)
+            except Exception:
+                failures += 1
+                _LOG.exception(
+                    "Cannot execute sleep action for entity %s", action.entity_id
+                )
+
+        if failures:
+            self._last_status = (
+                f"{failures} von {len(actions)} Ausschaltaktionen fehlgeschlagen"
+            )
+        elif len(actions) == 1:
+            self._last_status = "Ausschaltaktion ausgeführt"
+        else:
+            self._last_status = f"{len(actions)} Ausschaltaktionen ausgeführt"
+        self._reset_after_fire()
+        self._publish()
+        return failures == 0
+
+    def _reset_after_fire(self) -> None:
         self._mode = TimerMode.OFF
         self._deadline = None
         self._armed_item = None
         self._missing_since = None
-        self._publish()
-        return True
 
     def _cancel_locked(self, status: str) -> None:
-        self._mode = TimerMode.OFF
-        self._deadline = None
-        self._armed_item = None
-        self._missing_since = None
+        self._reset_after_fire()
         self._last_status = status
 
     def _publish(self) -> None:

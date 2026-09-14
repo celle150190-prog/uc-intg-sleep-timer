@@ -7,7 +7,7 @@ import unittest
 
 import httpx
 
-from core_client import CoreClient
+from core_client import CoreApiError, CoreClient
 
 
 def response(status: int, data: object) -> httpx.Response:
@@ -65,6 +65,41 @@ class CoreClientTest(unittest.IsolatedAsyncioTestCase):
                 "grid": {"width": 4, "height": 6},
                 "items": [],
             },
+        )
+
+    async def test_retries_short_command_on_older_core(self) -> None:
+        client = CoreClient("http://remote", "key")
+        client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
+            side_effect=[
+                CoreApiError("unsupported command", 422),
+                response(200, {}),
+            ]
+        )
+
+        await client.execute("denon.main.media_player.zone1", "media_player.off")
+
+        self.assertEqual(
+            [
+                (
+                    "PUT",
+                    "/api/entities/denon.main.media_player.zone1/command",
+                ),
+                (
+                    "PUT",
+                    "/api/entities/denon.main.media_player.zone1/command",
+                ),
+            ],
+            [
+                (call.args[0], call.args[1])
+                for call in client._request.await_args_list  # noqa: SLF001
+            ],
+        )
+        self.assertEqual(
+            [{"cmd_id": "media_player.off"}, {"cmd_id": "off"}],
+            [
+                call.kwargs["json"]
+                for call in client._request.await_args_list  # noqa: SLF001
+            ],
         )
 
 

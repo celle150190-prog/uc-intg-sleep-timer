@@ -1,6 +1,6 @@
 # Sleep Timer for Unfolded Circle Remote Two/3
 
-Custom integration that runs a configured Remote macro:
+Custom integration that turns off selected devices or runs configured Remote macros:
 
 - after 15, 30, 45, 60, 90, or 120 minutes;
 - after the media item that was playing when the timer was armed;
@@ -9,9 +9,13 @@ Custom integration that runs a configured Remote macro:
 The integration exposes a **Sleep Timer remote entity** with its own touch UI and simple commands, plus status and
 remaining-time sensors. Its commands can also be placed on buttons in existing activities and macros.
 
-The complete timer button layout is embedded in the remote entity. Version 0.1.2 also synchronizes this page once for
-entities that were already configured with an older version, because Remote Core normally imports a driver's default UI
-only during the initial entity configuration.
+The complete timer button layout is embedded in the remote entity. Version 0.1.2 and later also synchronizes this page
+once for entities that were already configured with an older version, because Remote Core normally imports a driver's
+default UI only during the initial entity configuration.
+
+Version 0.1.3 adds up to six independent off targets. Supported targets are power-capable media players, remotes,
+activities, lights and switches, plus existing Remote macros. All selected actions are attempted in their configured
+order; one failing target does not prevent the remaining targets from being processed.
 
 ## Supported current-item sources
 
@@ -28,8 +32,8 @@ off at an unsafe moment. Fixed timers continue to work normally.
 
 ## Before installation
 
-1. In the Remote web configurator, create a macro such as **Everything off**. Add the desired commands in their safe
-   order, for example light off, TV off, and Denon off.
+1. Add every device that the timer should switch off to Remote Core. Alternatively, create a Remote macro such as
+   **Everything off** if a more complex command sequence or delays are required.
 2. Create a Remote Core API key. The Core API requires a bearer token for entity reads and command execution.
 3. For reliable Emby monitoring, create an Emby API key in **Dashboard → Advanced → API Keys**.
 
@@ -41,9 +45,13 @@ your firmware, enter the Remote's normal web-configurator URL, for example `http
 1. Download the latest `uc-intg-sleep-timer-...-aarch64.tar.gz` archive from Releases.
 2. Install it with Integration Manager as a custom integration.
 3. Enter the Remote Core URL and API key.
-4. Select the Nvidia Shield media-player entity and the macro to execute.
-5. Optionally enter the Emby Server URL, API key, and a device-name filter such as `Shield` or `LG`.
-6. Add the **Sleep Timer** entity. The two sensor entities are optional.
+4. Choose up to six **Off targets**. Each dropdown can contain devices with a power-off command and Remote macros.
+5. Select the Nvidia Shield media-player entity if Netflix or Prime Video should be monitored.
+6. Optionally enter the Emby Server URL, API key, and a device-name filter such as `Shield` or `LG`.
+7. Add the **Sleep Timer** entity. The two sensor entities are optional.
+
+When updating from version 0.1.2, the previous single macro remains selected as target 1. Run setup again to replace it
+or add direct device targets.
 
 Every published version has its own GitHub release and standalone installation archive. Existing version packages are
 never replaced.

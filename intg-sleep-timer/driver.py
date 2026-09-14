@@ -165,8 +165,8 @@ def _register_entities() -> None:
         ui_pages=_ui_pages(),
         icon="uc:bed",
         description={
-            "en": "Run an off macro after a delay or after the current media item.",
-            "de": "Führt ein Ausschalt-Makro nach Zeit oder nach dem aktuellen Medienelement aus.",
+            "en": "Turn off configured devices after a delay or the current item.",
+            "de": "Schaltet gewählte Geräte nach Zeit oder aktuellem Element aus.",
         },
         cmd_handler=command_handler,
     )
@@ -306,7 +306,10 @@ async def main() -> None:
     setup_flow.initialize(_store, apply_settings)
     await api.init("driver.json", setup_flow.driver_setup_handler)
     api._driver_info["setup_data_schema"] = setup_flow.setup_data_schema()  # noqa: SLF001
-    if _store.settings.core_api_key and _store.settings.target_entity_id:
+    if (
+        _store.settings.core_api_key
+        and _store.settings.resolved_target_actions()
+    ):
         await apply_settings(_store.settings)
 
 

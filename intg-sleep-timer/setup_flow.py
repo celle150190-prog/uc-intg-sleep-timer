@@ -8,7 +8,7 @@ from typing import Any
 
 import ucapi
 
-from config import ConfigStore, Settings
+from config import ConfigStore, Settings, TargetAction
 from core_client import CoreApiError, CoreClient
 
 _LOG = logging.getLogger(__name__)
@@ -17,6 +17,9 @@ _store: ConfigStore | None = None
 _on_updated: Callable[[Settings], Awaitable[None]] | None = None
 _pending_url = "http://127.0.0.1:8080"
 _pending_key = ""
+_pending_actions: dict[str, TargetAction] = {}
+_MAX_TARGETS = 6
+_TARGET_TYPES = "activity,light,macro,media_player,remote,switch"
 
 
 def initialize(
@@ -40,10 +43,13 @@ def setup_data_schema() -> dict[str, Any]:
                 "field": {
                     "label": {
                         "value": {
-                            "en": "Create a Remote Core API key and an off macro before continuing.",
+                            "en": (
+                                "Create a Remote Core API key. Power-capable devices "
+                                "and macros can be selected during setup."
+                            ),
                             "de": (
-                                "Lege vor dem Fortfahren einen Remote-Core-API-Schlüssel "
-                                "und ein Ausschalt-Makro an."
+                                "Lege einen Remote-Core-API-Schlüssel an. Geräte mit "
+                                "Ausschaltfunktion und Makros können im Setup gewählt werden."
                             ),
                         }
                     }
@@ -61,7 +67,7 @@ async def driver_setup_handler(msg: ucapi.SetupDriver) -> ucapi.SetupAction:
         return ucapi.SetupError()
 
     values = msg.input_values
-    if "target_entity_id" in values:
+    if "target_1" in values or "target_entity_id" in values:
         return await _finish(values)
     if "core_url" in values:
         return await _load_entities(values)
@@ -89,7 +95,7 @@ def _credentials_screen(error: str = "") -> ucapi.RequestUserInput:
                 },
             },
             {
-                # The SDK redacts setup values whose id is ``password``.
+                # The SDK redacts setup values whose id is password.
                 "id": "password",
                 "label": {
                     "en": "Core API key (required on first setup)",
@@ -106,7 +112,7 @@ def _credentials_screen(error: str = "") -> ucapi.RequestUserInput:
 
 
 async def _load_entities(values: dict[str, str]) -> ucapi.SetupAction:
-    global _pending_url, _pending_key
+    global _pending_url, _pending_key, _pending_actions
     current = _store.settings if _store else Settings()
     _pending_url = values.get("core_url", "").strip()
     _pending_key = (
@@ -122,24 +128,76 @@ async def _load_entities(values: dict[str, str]) -> ucapi.SetupAction:
         )
     client = CoreClient(_pending_url, _pending_key)
     try:
-        entities = await client.list_entities("media_player,macro")
+        entities = await client.list_entities(_TARGET_TYPES)
     except CoreApiError as error:
         if error.status_code in {401, 403}:
             return _credentials_screen("API-Schlüssel wurde abgelehnt.")
         return _credentials_screen(f"Remote Core nicht erreichbar: {error}")
 
     media = [item for item in entities if item.get("entity_type") == "media_player"]
-    macros = [item for item in entities if item.get("entity_type") == "macro"]
-    if not macros:
+    action_pairs = [
+        (item, action)
+        for item in entities
+        if (action := _target_action(item)) is not None
+    ]
+    if not action_pairs:
         return _credentials_screen(
-            "Es wurde kein Makro gefunden. Lege auf der Remote zuerst ein Ausschalt-Makro an."
+            "Es wurden keine Geräte mit Ausschaltfunktion und keine Makros gefunden."
         )
+    _pending_actions = {action.entity_id: action for _, action in action_pairs}
 
     empty = {"id": "", "label": {"de": "Nicht verwenden", "en": "Do not use"}}
     media_items = [empty, *(_dropdown_item(item) for item in media)]
-    macro_items = [_dropdown_item(item) for item in macros]
-    return ucapi.RequestUserInput(
-        {"en": "Sources and off action", "de": "Quellen und Ausschaltaktion"},
+    target_items = [
+        empty,
+        *sorted(
+            (_target_dropdown_item(item, action) for item, action in action_pairs),
+            key=lambda item: str(item["label"]["de"]).casefold(),
+        ),
+    ]
+    selected = [
+        action.entity_id
+        for action in current.resolved_target_actions()
+        if action.entity_id in _pending_actions
+    ]
+
+    fields: list[dict[str, Any]] = [
+        {
+            "id": "target_info",
+            "label": {"en": "Off actions", "de": "Ausschaltaktionen"},
+            "field": {
+                "label": {
+                    "value": {
+                        "en": (
+                            "Select up to six devices or macros. All selected "
+                            "actions are run in order when the timer expires."
+                        ),
+                        "de": (
+                            "Wähle bis zu sechs Geräte oder Makros. Beim Ablauf "
+                            "werden alle gewählten Aktionen der Reihe nach ausgeführt."
+                        ),
+                    }
+                }
+            },
+        }
+    ]
+    for index in range(_MAX_TARGETS):
+        fields.append(
+            {
+                "id": f"target_{index + 1}",
+                "label": {
+                    "en": f"Off target {index + 1}",
+                    "de": f"Ausschaltziel {index + 1}",
+                },
+                "field": {
+                    "dropdown": {
+                        "value": selected[index] if index < len(selected) else "",
+                        "items": target_items,
+                    }
+                },
+            }
+        )
+    fields.extend(
         [
             {
                 "id": "emby_entity_id",
@@ -165,16 +223,6 @@ async def _load_entities(values: dict[str, str]) -> ucapi.SetupAction:
                 },
             },
             {
-                "id": "target_entity_id",
-                "label": {"en": "Macro to run at the end", "de": "Makro nach Ablauf"},
-                "field": {
-                    "dropdown": {
-                        "value": current.target_entity_id,
-                        "items": macro_items,
-                    }
-                },
-            },
-            {
                 "id": "emby_url",
                 "label": {
                     "en": "Emby Server URL (recommended)",
@@ -183,7 +231,7 @@ async def _load_entities(values: dict[str, str]) -> ucapi.SetupAction:
                 "field": {"text": {"value": current.emby_url}},
             },
             {
-                # ``token`` is redacted by the SDK in diagnostic logs.
+                # The SDK redacts setup values whose id is token.
                 "id": "token",
                 "label": {
                     "en": "Emby API key (leave blank to keep existing)",
@@ -199,22 +247,53 @@ async def _load_entities(values: dict[str, str]) -> ucapi.SetupAction:
                 },
                 "field": {"text": {"value": current.emby_device_filter}},
             },
-        ],
+        ]
+    )
+    return ucapi.RequestUserInput(
+        {"en": "Sources and off actions", "de": "Quellen und Ausschaltaktionen"},
+        fields,
     )
 
 
 async def _finish(values: dict[str, str]) -> ucapi.SetupAction:
     if _store is None or _on_updated is None:
         return ucapi.SetupError()
-    target = values.get("target_entity_id", "").strip()
-    if not target:
-        return ucapi.SetupError(error_type=ucapi.IntegrationSetupError.NOT_FOUND)
+
+    selected_ids = [
+        values.get(f"target_{index}", "").strip()
+        for index in range(1, _MAX_TARGETS + 1)
+    ]
+    # Accept the old setup payload during a rolling upgrade.
+    legacy_target = values.get("target_entity_id", "").strip()
+    if legacy_target and not any(selected_ids):
+        selected_ids.append(legacy_target)
+
+    actions: list[TargetAction] = []
+    seen: set[str] = set()
     current = _store.settings
+    current_actions = {
+        action.entity_id: action for action in current.resolved_target_actions()
+    }
+    for entity_id in selected_ids:
+        if not entity_id or entity_id in seen:
+            continue
+        action = _pending_actions.get(entity_id) or current_actions.get(entity_id)
+        if action is None and entity_id == legacy_target:
+            action = TargetAction(entity_id, "macro.start")
+        if action is not None:
+            seen.add(entity_id)
+            actions.append(action)
+
+    if not actions:
+        return ucapi.SetupError(error_type=ucapi.IntegrationSetupError.NOT_FOUND)
+
+    first = actions[0]
     settings = Settings(
         core_url=_pending_url,
         core_api_key=_pending_key,
-        target_entity_id=target,
-        target_command_id="macro.start",
+        target_entity_id=first.entity_id,
+        target_command_id=first.command_id,
+        target_actions=actions,
         emby_url=values.get("emby_url", "").strip(),
         emby_api_key=(
             values.get("token", "").strip()
@@ -224,6 +303,10 @@ async def _finish(values: dict[str, str]) -> ucapi.SetupAction:
         emby_device_filter=values.get("emby_device_filter", "").strip(),
         emby_entity_id=values.get("emby_entity_id", "").strip(),
         shield_entity_id=values.get("shield_entity_id", "").strip(),
+        poll_interval=current.poll_interval,
+        end_tolerance=current.end_tolerance,
+        stopped_grace=current.stopped_grace,
+        ui_schema_version=current.ui_schema_version,
     )
     if not _store.save(settings):
         return ucapi.SetupError()
@@ -231,14 +314,76 @@ async def _finish(values: dict[str, str]) -> ucapi.SetupAction:
     return ucapi.SetupComplete()
 
 
+def _target_action(entity: dict[str, Any]) -> TargetAction | None:
+    entity_id = str(entity.get("entity_id", "")).strip()
+    entity_type = str(entity.get("entity_type", "")).strip()
+    features = {
+        str(feature).casefold() for feature in entity.get("features", []) if feature
+    }
+    if not entity_id:
+        return None
+    if entity_type == "macro":
+        return TargetAction(entity_id, "macro.start", _entity_name(entity))
+    if entity_type == "activity" and "on_off" in features:
+        return TargetAction(entity_id, "activity.off", _entity_name(entity))
+    if entity_type in {"light", "switch"}:
+        return TargetAction(entity_id, f"{entity_type}.off", _entity_name(entity))
+    if entity_type in {"media_player", "remote"} and "on_off" in features:
+        return TargetAction(entity_id, f"{entity_type}.off", _entity_name(entity))
+    return None
+
+
+def _target_dropdown_item(
+    entity: dict[str, Any], action: TargetAction
+) -> dict[str, Any]:
+    entity_type = str(entity.get("entity_type", ""))
+    type_names = {
+        "activity": ("Aktivität", "Activity"),
+        "light": ("Licht", "Light"),
+        "macro": ("Makro", "Macro"),
+        "media_player": ("Mediengerät", "Media device"),
+        "remote": ("Fernbedienung", "Remote"),
+        "switch": ("Schalter", "Switch"),
+    }
+    type_de, type_en = type_names.get(entity_type, (entity_type, entity_type))
+    name = action.name
+    if not name or name == action.entity_id:
+        suffix = action.entity_id[-8:]
+        name = f"Unbenannt ({suffix})"
+    if entity_type == "macro":
+        de = f"{name} – {type_de} starten"
+        en = f"{name} – start {type_en.lower()}"
+    else:
+        de = f"{name} – {type_de} ausschalten"
+        en = f"{name} – turn off {type_en.lower()}"
+    return {"id": action.entity_id, "label": {"de": de, "en": en}}
+
+
 def _dropdown_item(entity: dict[str, Any]) -> dict[str, Any]:
     entity_id = str(entity.get("entity_id", ""))
-    name = entity.get("name", {})
-    if isinstance(name, dict):
-        label = str(name.get("de") or name.get("en") or entity_id)
-    else:
-        label = str(name or entity_id)
+    label = _entity_name(entity) or entity_id
     return {
         "id": entity_id,
         "label": {"de": f"{label} [{entity_id}]", "en": f"{label} [{entity_id}]"},
     }
+
+
+def _entity_name(entity: dict[str, Any]) -> str:
+    return _localized_text(entity.get("name"))
+
+
+def _localized_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if not isinstance(value, dict):
+        return ""
+    for key in ("de", "en", "value", "name"):
+        if key in value:
+            text = _localized_text(value[key])
+            if text:
+                return text
+    for item in value.values():
+        text = _localized_text(item)
+        if text:
+            return text
+    return ""

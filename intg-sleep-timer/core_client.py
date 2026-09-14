@@ -33,7 +33,7 @@ class CoreClient:
 
     async def test(self) -> None:
         """Validate URL, connectivity and token."""
-        await self.list_entities("media_player,macro")
+        await self.list_entities()
 
     async def list_entities(self, entity_types: str = "") -> list[dict[str, Any]]:
         params: dict[str, str | int] = {"page": 1, "limit": 100}
@@ -110,14 +110,15 @@ class CoreClient:
         return str(result["page_id"])
 
     async def execute(self, entity_id: str, command_id: str) -> None:
-        """Execute a command and retry the short macro command for old firmware."""
+        """Execute a Core command, with a compatibility fallback for old firmware."""
         safe_id = quote(entity_id, safe="")
         path = f"/api/entities/{safe_id}/command"
         try:
             await self._request("PUT", path, json={"cmd_id": command_id})
         except CoreApiError as error:
-            if command_id == "macro.start" and error.status_code in {400, 422}:
-                await self._request("PUT", path, json={"cmd_id": "start"})
+            short_command = command_id.rsplit(".", 1)[-1]
+            if short_command != command_id and error.status_code in {400, 404, 422}:
+                await self._request("PUT", path, json={"cmd_id": short_command})
                 return
             raise
 

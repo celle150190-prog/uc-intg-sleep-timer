@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import json
 import logging
 from pathlib import Path
@@ -11,14 +11,26 @@ _LOG = logging.getLogger(__name__)
 _CONFIG_FILE = "config.json"
 
 
+@dataclass(frozen=True, slots=True)
+class TargetAction:
+    """One Core entity command executed when the timer expires."""
+
+    entity_id: str
+    command_id: str
+    name: str = ""
+
+
 @dataclass(slots=True)
 class Settings:
     """Integration settings."""
 
     core_url: str = "http://127.0.0.1:8080"
     core_api_key: str = ""
+    # Legacy single-target fields are kept so existing configurations migrate
+    # without requiring the user to recreate the integration.
     target_entity_id: str = ""
     target_command_id: str = "macro.start"
+    target_actions: list[TargetAction] = field(default_factory=list)
     emby_url: str = ""
     emby_api_key: str = ""
     emby_device_filter: str = ""
@@ -31,9 +43,62 @@ class Settings:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":
-        """Load known fields and ignore fields added by future versions."""
+        """Load known fields and migrate the legacy single-target format."""
         known = cls.__dataclass_fields__
-        return cls(**{key: value for key, value in data.items() if key in known})
+        values = {key: value for key, value in data.items() if key in known}
+        raw_actions = values.pop("target_actions", [])
+        settings = cls(**values)
+        if isinstance(raw_actions, list):
+            settings.target_actions = [
+                TargetAction(
+                    entity_id=str(item.get("entity_id", "")).strip(),
+                    command_id=str(item.get("command_id", "")).strip(),
+                    name=str(item.get("name", "")).strip(),
+                )
+                for item in raw_actions
+                if isinstance(item, dict)
+                and str(item.get("entity_id", "")).strip()
+                and str(item.get("command_id", "")).strip()
+            ]
+        if not settings.target_actions and settings.target_entity_id:
+            settings.target_actions = [
+                TargetAction(
+                    settings.target_entity_id,
+                    settings.target_command_id or "macro.start",
+                )
+            ]
+        return settings
+
+    def resolved_target_actions(self) -> list[TargetAction]:
+        """Return valid, de-duplicated actions including legacy settings."""
+        source: list[TargetAction | dict] = list(self.target_actions)
+        if not source and self.target_entity_id:
+            source = [
+                TargetAction(
+                    self.target_entity_id,
+                    self.target_command_id or "macro.start",
+                )
+            ]
+
+        actions: list[TargetAction] = []
+        seen: set[tuple[str, str]] = set()
+        for item in source:
+            if isinstance(item, TargetAction):
+                action = item
+            elif isinstance(item, dict):
+                action = TargetAction(
+                    entity_id=str(item.get("entity_id", "")).strip(),
+                    command_id=str(item.get("command_id", "")).strip(),
+                    name=str(item.get("name", "")).strip(),
+                )
+            else:
+                continue
+            key = (action.entity_id.strip(), action.command_id.strip())
+            if not all(key) or key in seen:
+                continue
+            seen.add(key)
+            actions.append(TargetAction(*key, action.name.strip()))
+        return actions
 
 
 class ConfigStore:

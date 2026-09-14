@@ -2,17 +2,20 @@
 
 import unittest
 
-from config import Settings
+from config import Settings, TargetAction
 from models import PlaybackSnapshot, TimerMode
 from timer import TimerController
 
 
 class FakeClient:
-    def __init__(self):
+    def __init__(self, failing_entities=None):
         self.calls = []
+        self.failing_entities = set(failing_entities or [])
 
     async def execute(self, entity_id, command_id):
         self.calls.append((entity_id, command_id))
+        if entity_id in self.failing_entities:
+            raise RuntimeError("simulated failure")
 
 
 class FakeResolver:
@@ -49,6 +52,29 @@ class TimerControllerTest(unittest.IsolatedAsyncioTestCase):
             self.client.calls,
         )
         self.assertEqual(TimerMode.OFF, self.timer.view.mode)
+
+    async def test_all_targets_are_attempted_if_one_fails(self):
+        settings = Settings(
+            core_api_key="key",
+            target_actions=[
+                TargetAction("tv.main.media_player.tv", "media_player.off"),
+                TargetAction("denon.main.media_player.zone1", "media_player.off"),
+            ],
+        )
+        timer = TimerController(settings, self.views.append)
+        client = FakeClient({"tv.main.media_player.tv"})
+        timer._client = client
+
+        self.assertFalse(await timer.trigger_now())
+
+        self.assertEqual(
+            [
+                ("tv.main.media_player.tv", "media_player.off"),
+                ("denon.main.media_player.zone1", "media_player.off"),
+            ],
+            client.calls,
+        )
+        self.assertIn("1 von 2", timer.view.status)
 
     async def test_watch_fires_when_item_changes(self):
         first = PlaybackSnapshot("Emby", "one", "Episode 1", "PLAYING", 100, 120)

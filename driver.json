@@ -1,6 +1,6 @@
 {
   "driver_id": "sleep-timer",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "min_core_api": "0.43.0",
   "name": {
     "en": "Sleep Timer",
@@ -8,8 +8,8 @@
   },
   "icon": "uc:bed",
   "description": {
-    "en": "Runs a Remote macro after a delay or after the current media item.",
-    "de": "Führt ein Remote-Makro nach Zeit oder nach dem aktuellen Medienelement aus."
+    "en": "Turns off selected devices or runs macros after a delay or the current media item.",
+    "de": "Schaltet ausgewählte Geräte aus oder startet Makros nach Zeit oder aktuellem Medienelement."
   },
   "port": 8098,
   "developer": {
@@ -32,13 +32,13 @@
         "field": {
           "label": {
             "value": {
-              "en": "Create a Remote Core API key and an off macro before continuing.",
-              "de": "Lege vor dem Fortfahren einen Remote-Core-API-Schlüssel und ein Ausschalt-Makro an."
+              "en": "Create a Remote Core API key. Power-capable devices and macros can be selected during setup.",
+              "de": "Lege einen Remote-Core-API-Schlüssel an. Geräte mit Ausschaltfunktion und Makros können im Setup gewählt werden."
             }
           }
         }
       }
     ]
   },
-  "release_date": "2026-09-12"
+  "release_date": "2026-09-14"
 }
