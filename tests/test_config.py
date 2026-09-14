@@ -18,6 +18,7 @@ class SettingsTest(unittest.TestCase):
             [TargetAction("uc.main.macro.off", "macro.start")],
             settings.resolved_target_actions(),
         )
+        self.assertTrue(settings.turn_off_active_activity)
 
     def test_deduplicates_target_actions(self) -> None:
         settings = Settings(

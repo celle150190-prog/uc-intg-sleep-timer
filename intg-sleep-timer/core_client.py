@@ -53,6 +53,44 @@ class CoreClient:
             raise CoreApiError("Unexpected entity response")
         return data
 
+    async def get_activity(self, entity_id: str) -> dict[str, Any]:
+        """Load a complete activity including its current sequence state."""
+        safe_id = quote(entity_id, safe="")
+        response = await self._request("GET", f"/api/activities/{safe_id}")
+        data = response.json()
+        if not isinstance(data, dict):
+            raise CoreApiError("Unexpected activity response")
+        return data
+
+    async def list_active_activities(self) -> list[dict[str, Any]]:
+        """Return activities which are currently on and can be switched off."""
+        overviews = await self.list_entities("activity")
+        active: list[dict[str, Any]] = []
+        for overview in overviews:
+            entity_id = str(overview.get("entity_id", "")).strip()
+            if not entity_id:
+                continue
+            activity = overview
+            if not self._sequence_state(activity):
+                activity = await self.get_activity(entity_id)
+            features = {
+                str(feature).casefold()
+                for feature in activity.get("features", [])
+                if feature
+            }
+            if self._sequence_state(activity) == "ON" and "on_off" in features:
+                active.append(activity)
+        return active
+
+    @staticmethod
+    def _sequence_state(entity: dict[str, Any]) -> str:
+        attributes = entity.get("attributes")
+        if isinstance(attributes, dict):
+            state = attributes.get("state")
+            if state:
+                return str(state).strip().upper()
+        return str(entity.get("state", "")).strip().upper()
+
     async def find_configured_entity(
         self, local_entity_id: str, entity_type: str
     ) -> str:

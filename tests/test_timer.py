@@ -8,9 +8,13 @@ from timer import TimerController
 
 
 class FakeClient:
-    def __init__(self, failing_entities=None):
+    def __init__(self, failing_entities=None, active_activities=None):
         self.calls = []
         self.failing_entities = set(failing_entities or [])
+        self.active_activities = list(active_activities or [])
+
+    async def list_active_activities(self):
+        return self.active_activities
 
     async def execute(self, entity_id, command_id):
         self.calls.append((entity_id, command_id))
@@ -75,6 +79,65 @@ class TimerControllerTest(unittest.IsolatedAsyncioTestCase):
             client.calls,
         )
         self.assertIn("1 von 2", timer.view.status)
+
+    async def test_active_activity_is_ended_before_device_targets(self):
+        settings = Settings(
+            core_api_key="key",
+            target_actions=[
+                TargetAction("denon.main.media_player.zone1", "media_player.off"),
+            ],
+        )
+        timer = TimerController(settings, self.views.append)
+        client = FakeClient(
+            active_activities=[
+                {
+                    "entity_id": "uc.main.activity.game-avr",
+                    "attributes": {"state": "ON"},
+                }
+            ]
+        )
+        timer._client = client
+
+        self.assertTrue(await timer.trigger_now())
+
+        self.assertEqual(
+            [
+                ("uc.main.activity.game-avr", "activity.off"),
+                ("denon.main.media_player.zone1", "media_player.off"),
+            ],
+            client.calls,
+        )
+        self.assertIn("Aktivität beendet", timer.view.status)
+
+    async def test_activity_failure_does_not_block_device_targets(self):
+        settings = Settings(
+            core_api_key="key",
+            target_actions=[
+                TargetAction("denon.main.media_player.zone1", "media_player.off"),
+            ],
+        )
+        timer = TimerController(settings, self.views.append)
+        client = FakeClient(
+            failing_entities={"uc.main.activity.game-avr"},
+            active_activities=[
+                {
+                    "entity_id": "uc.main.activity.game-avr",
+                    "attributes": {"state": "ON"},
+                }
+            ],
+        )
+        timer._client = client
+
+        self.assertFalse(await timer.trigger_now())
+
+        self.assertEqual(
+            [
+                ("uc.main.activity.game-avr", "activity.off"),
+                ("denon.main.media_player.zone1", "media_player.off"),
+            ],
+            client.calls,
+        )
+        self.assertIn("Aktivität nicht beendet", timer.view.status)
 
     async def test_watch_fires_when_item_changes(self):
         first = PlaybackSnapshot("Emby", "one", "Episode 1", "PLAYING", 100, 120)

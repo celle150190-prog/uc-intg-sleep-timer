@@ -188,8 +188,14 @@ class TimerController:
             self._publish()
             return False
 
+        ended_activities, activity_failures = await self._turn_off_active_activities()
         failures = 0
         for action in actions:
+            if (
+                action.entity_id in ended_activities
+                and action.command_id in {"activity.off", "off"}
+            ):
+                continue
             try:
                 await self._client.execute(action.entity_id, action.command_id)
             except Exception:
@@ -206,9 +212,41 @@ class TimerController:
             self._last_status = "Ausschaltaktion ausgeführt"
         else:
             self._last_status = f"{len(actions)} Ausschaltaktionen ausgeführt"
+
+        if activity_failures:
+            self._last_status += "; Aktivität nicht beendet"
+        elif ended_activities:
+            suffix = "Aktivität beendet"
+            if len(ended_activities) > 1:
+                suffix = f"{len(ended_activities)} Aktivitäten beendet"
+            self._last_status += f"; {suffix}"
+
         self._reset_after_fire()
         self._publish()
-        return failures == 0
+        return failures == 0 and activity_failures == 0
+
+    async def _turn_off_active_activities(self) -> tuple[set[str], int]:
+        if not self._settings.turn_off_active_activity:
+            return set(), 0
+        try:
+            activities = await self._client.list_active_activities()
+        except Exception:
+            _LOG.exception("Cannot determine the active Remote activity")
+            return set(), 1
+
+        ended: set[str] = set()
+        failures = 0
+        for activity in activities:
+            entity_id = str(activity.get("entity_id", "")).strip()
+            if not entity_id:
+                continue
+            try:
+                await self._client.execute(entity_id, "activity.off")
+                ended.add(entity_id)
+            except Exception:
+                failures += 1
+                _LOG.exception("Cannot turn off active activity %s", entity_id)
+        return ended, failures
 
     def _reset_after_fire(self) -> None:
         self._mode = TimerMode.OFF

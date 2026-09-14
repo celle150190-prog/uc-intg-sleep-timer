@@ -67,6 +67,69 @@ class CoreClientTest(unittest.IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_lists_only_active_power_capable_activities(self) -> None:
+        client = CoreClient("http://remote", "key")
+        client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
+            return_value=response(
+                200,
+                [
+                    {
+                        "entity_id": "uc.main.activity.game-avr",
+                        "entity_type": "activity",
+                        "features": ["on_off"],
+                        "attributes": {"state": "ON"},
+                    },
+                    {
+                        "entity_id": "uc.main.activity.music",
+                        "entity_type": "activity",
+                        "features": ["on_off"],
+                        "attributes": {"state": "OFF"},
+                    },
+                ],
+            )
+        )
+
+        activities = await client.list_active_activities()
+
+        self.assertEqual(
+            ["uc.main.activity.game-avr"],
+            [item["entity_id"] for item in activities],
+        )
+
+    async def test_loads_activity_details_if_overview_has_no_state(self) -> None:
+        client = CoreClient("http://remote", "key")
+        client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
+            side_effect=[
+                response(
+                    200,
+                    [
+                        {
+                            "entity_id": "uc.main.activity.game-avr",
+                            "entity_type": "activity",
+                            "features": ["on_off"],
+                        }
+                    ],
+                ),
+                response(
+                    200,
+                    {
+                        "entity_id": "uc.main.activity.game-avr",
+                        "entity_type": "activity",
+                        "features": ["on_off"],
+                        "attributes": {"state": "ON"},
+                    },
+                ),
+            ]
+        )
+
+        activities = await client.list_active_activities()
+
+        self.assertEqual(1, len(activities))
+        client._request.assert_awaited_with(  # noqa: SLF001
+            "GET",
+            "/api/activities/uc.main.activity.game-avr",
+        )
+
     async def test_retries_short_command_on_older_core(self) -> None:
         client = CoreClient("http://remote", "key")
         client._request = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001

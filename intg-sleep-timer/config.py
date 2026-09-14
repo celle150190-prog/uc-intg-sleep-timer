@@ -31,6 +31,7 @@ class Settings:
     target_entity_id: str = ""
     target_command_id: str = "macro.start"
     target_actions: list[TargetAction] = field(default_factory=list)
+    turn_off_active_activity: bool = True
     emby_url: str = ""
     emby_api_key: str = ""
     emby_device_filter: str = ""

@@ -17,6 +17,10 @@ Version 0.1.3 adds up to six independent off targets. Supported targets are powe
 activities, lights and switches, plus existing Remote macros. All selected actions are attempted in their configured
 order; one failing target does not prevent the remaining targets from being processed.
 
+Version 0.1.5 detects every activity whose Core state is `ON` and sends `activity.off` before the configured device
+targets run. This executes the activity's normal off sequence and changes its Core state to `OFF`, so Remote 3 no longer
+wakes up inside the previous activity. The behavior is enabled by default and can be disabled in setup.
+
 ## Supported current-item sources
 
 | Source | Detection | Reliability |
@@ -45,10 +49,11 @@ your firmware, enter the Remote's normal web-configurator URL, for example `http
 1. Download the latest `uc-intg-sleep-timer-...-aarch64.tar.gz` archive from Releases.
 2. Install it with Integration Manager as a custom integration.
 3. Enter the Remote Core URL and API key.
-4. Choose up to six **Off targets**. Each dropdown can contain devices with a power-off command and Remote macros.
-5. Select the Nvidia Shield media-player entity if Netflix or Prime Video should be monitored.
-6. Optionally enter the Emby Server URL, API key, and a device-name filter such as `Shield` or `LG`.
-7. Add the **Sleep Timer** entity. The two sensor entities are optional.
+4. Keep **Turn off active Remote activity** set to **Yes** so the previous activity is closed in Remote Core.
+5. Choose up to six **Off targets**. Each dropdown can contain devices with a power-off command and Remote macros.
+6. Select the Nvidia Shield media-player entity if Netflix or Prime Video should be monitored.
+7. Optionally enter the Emby Server URL, API key, and a device-name filter such as `Shield` or `LG`.
+8. Add the **Sleep Timer** entity. The two sensor entities are optional.
 
 When updating from version 0.1.2, the previous single macro remains selected as target 1. Run setup again to replace it
 or add direct device targets.

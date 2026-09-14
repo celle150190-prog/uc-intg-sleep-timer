@@ -1,6 +1,6 @@
 {
   "driver_id": "sleep-timer",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "min_core_api": "0.43.0",
   "name": {
     "en": "Sleep Timer",
@@ -8,8 +8,8 @@
   },
   "icon": "uc:bed",
   "description": {
-    "en": "Turns off selected devices or runs macros after a delay or the current media item.",
-    "de": "Schaltet ausgewählte Geräte aus oder startet Makros nach Zeit oder aktuellem Medienelement."
+    "en": "Ends active activities and turns off selected devices after a delay or the current media item.",
+    "de": "Beendet aktive Aktivitäten und schaltet gewählte Geräte nach Zeit oder aktuellem Medienelement aus."
   },
   "port": 8098,
   "developer": {

@@ -169,17 +169,39 @@ async def _load_entities(values: dict[str, str]) -> ucapi.SetupAction:
                 "label": {
                     "value": {
                         "en": (
-                            "Select up to six devices or macros. All selected "
-                            "actions are run in order when the timer expires."
+                            "The active Remote activity is turned off first. "
+                            "Then all selected actions are run in order."
                         ),
                         "de": (
-                            "Wähle bis zu sechs Geräte oder Makros. Beim Ablauf "
-                            "werden alle gewählten Aktionen der Reihe nach ausgeführt."
+                            "Zuerst wird die aktive Remote-Aktivität beendet. "
+                            "Danach werden alle gewählten Aktionen ausgeführt."
                         ),
                     }
                 }
             },
-        }
+        },
+        {
+            "id": "turn_off_active_activity",
+            "label": {
+                "en": "Turn off active Remote activity",
+                "de": "Aktive Remote-Aktivität beenden",
+            },
+            "field": {
+                "dropdown": {
+                    "value": "true" if current.turn_off_active_activity else "false",
+                    "items": [
+                        {
+                            "id": "true",
+                            "label": {"en": "Yes", "de": "Ja"},
+                        },
+                        {
+                            "id": "false",
+                            "label": {"en": "No", "de": "Nein"},
+                        },
+                    ],
+                }
+            },
+        },
     ]
     for index in range(_MAX_TARGETS):
         fields.append(
@@ -294,6 +316,10 @@ async def _finish(values: dict[str, str]) -> ucapi.SetupAction:
         target_entity_id=first.entity_id,
         target_command_id=first.command_id,
         target_actions=actions,
+        turn_off_active_activity=(
+            values.get("turn_off_active_activity", "true").strip().casefold()
+            != "false"
+        ),
         emby_url=values.get("emby_url", "").strip(),
         emby_api_key=(
             values.get("token", "").strip()

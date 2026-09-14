@@ -165,8 +165,8 @@ def _register_entities() -> None:
         ui_pages=_ui_pages(),
         icon="uc:bed",
         description={
-            "en": "Turn off configured devices after a delay or the current item.",
-            "de": "Schaltet gewählte Geräte nach Zeit oder aktuellem Element aus.",
+            "en": "End the active activity and turn off configured devices.",
+            "de": "Beendet die aktive Aktivität und schaltet gewählte Geräte aus.",
         },
         cmd_handler=command_handler,
     )
